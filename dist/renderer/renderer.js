@@ -65,7 +65,7 @@
   btnConvert.addEventListener("click", startConversion);
   btnOpenFolder.addEventListener("click", () => {
     if (outputFilePath) {
-      window.electronAPI.openDialog();
+      window.electronAPI.showItemInFolder(outputFilePath);
     }
   });
   async function startConversion() {

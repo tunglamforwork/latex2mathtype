@@ -338,16 +338,31 @@ function convertNode(node: FxpNode): string {
     // ── Scripts ──────────────────────────────────────────────────────────────
     case 'msup': {
       if (children.length < 2) return convertChildren(children);
+      // Check if base is a nary operator (no body available outside mrow context)
+      if (getTag(children[0]) === 'mo' && isNaryOp(getTextContent(getChildren(children[0])).trim())) {
+        const opText = getTextContent(getChildren(children[0])).trim();
+        return ommlNary(opText, '', convertNode(children[1]), '', 'subSup');
+      }
       return ommlSup(convertNode(children[0]), convertNode(children[1]));
     }
 
     case 'msub': {
       if (children.length < 2) return convertChildren(children);
+      // Check if base is a nary operator
+      if (getTag(children[0]) === 'mo' && isNaryOp(getTextContent(getChildren(children[0])).trim())) {
+        const opText = getTextContent(getChildren(children[0])).trim();
+        return ommlNary(opText, convertNode(children[1]), '', '', 'subSup');
+      }
       return ommlSub(convertNode(children[0]), convertNode(children[1]));
     }
 
     case 'msubsup': {
       if (children.length < 3) return convertChildren(children);
+      // Check if base is a nary operator
+      if (getTag(children[0]) === 'mo' && isNaryOp(getTextContent(getChildren(children[0])).trim())) {
+        const opText = getTextContent(getChildren(children[0])).trim();
+        return ommlNary(opText, convertNode(children[1]), convertNode(children[2]), '', 'subSup');
+      }
       return ommlSubSup(
         convertNode(children[0]),
         convertNode(children[1]),

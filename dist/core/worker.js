@@ -217,11 +217,34 @@ function fastConvert(latex) {
   }
   return null;
 }
+var NARY_COMMANDS = /* @__PURE__ */ new Set([
+  "int",
+  "iint",
+  "iiint",
+  "iiiint",
+  "oint",
+  "oiint",
+  "sum",
+  "prod",
+  "coprod",
+  "bigcup",
+  "bigcap",
+  "bigsqcup",
+  "biguplus",
+  "bigvee",
+  "bigwedge",
+  "bigodot",
+  "bigoplus",
+  "bigotimes"
+]);
 function parseSubSup(src) {
   let pos = 0;
   const base = parseGroup(src, pos);
   if (!base) return null;
   pos = base.end;
+  if (base.content.startsWith("\\") && NARY_COMMANDS.has(base.content.slice(1))) {
+    return null;
+  }
   while (pos < src.length && src[pos] === " ") pos++;
   if (pos >= src.length) return null;
   let subContent = null;
@@ -17497,21 +17520,44 @@ function convertMrowChildren(children) {
   while (i < children.length) {
     const node = children[i];
     const tag = getTag(node);
-    if (tag === "munderover" || tag === "munder" || tag === "mover") {
+    if (tag === "munderover" || tag === "munder" || tag === "mover" || tag === "msubsup" || tag === "msub" || tag === "msup") {
       const ch = getChildren(node);
       const base = ch[0];
       if (base && getTag(base) === "mo") {
         const opText = getTextContent(getChildren(base)).trim();
         if (isNaryOp(opText)) {
-          const sub2 = tag !== "mover" && ch[1] ? convertNode(ch[1]) : "";
-          const sup2 = tag === "munderover" && ch[2] ? convertNode(ch[2]) : tag === "mover" && ch[1] ? convertNode(ch[1]) : "";
-          const limLoc = tag === "munderover" ? "undOvr" : "subSup";
-          const nextNode = children[i + 1];
-          const body = nextNode ? convertNode(nextNode) : "";
-          const bodyHasContent = !!nextNode;
-          parts.push(ommlNary(opText, sub2, sup2, body, limLoc));
-          if (bodyHasContent) i++;
+          let sub2 = "";
+          let sup2 = "";
+          let limLoc = "subSup";
+          if (tag === "munderover") {
+            sub2 = ch[1] ? convertNode(ch[1]) : "";
+            sup2 = ch[2] ? convertNode(ch[2]) : "";
+            limLoc = "undOvr";
+          } else if (tag === "munder") {
+            sub2 = ch[1] ? convertNode(ch[1]) : "";
+            limLoc = "undOvr";
+          } else if (tag === "mover") {
+            sup2 = ch[1] ? convertNode(ch[1]) : "";
+            limLoc = "undOvr";
+          } else if (tag === "msubsup") {
+            sub2 = ch[1] ? convertNode(ch[1]) : "";
+            sup2 = ch[2] ? convertNode(ch[2]) : "";
+            limLoc = "subSup";
+          } else if (tag === "msub") {
+            sub2 = ch[1] ? convertNode(ch[1]) : "";
+            limLoc = "subSup";
+          } else if (tag === "msup") {
+            sup2 = ch[1] ? convertNode(ch[1]) : "";
+            limLoc = "subSup";
+          }
           i++;
+          const bodyParts = [];
+          while (i < children.length) {
+            bodyParts.push(convertNode(children[i]));
+            i++;
+          }
+          const body = bodyParts.join("");
+          parts.push(ommlNary(opText, sub2, sup2, body, limLoc));
           continue;
         }
       }
@@ -17581,14 +17627,26 @@ function convertNode(node) {
     // ── Scripts ──────────────────────────────────────────────────────────────
     case "msup": {
       if (children.length < 2) return convertChildren(children);
+      if (getTag(children[0]) === "mo" && isNaryOp(getTextContent(getChildren(children[0])).trim())) {
+        const opText = getTextContent(getChildren(children[0])).trim();
+        return ommlNary(opText, "", convertNode(children[1]), "", "subSup");
+      }
       return ommlSup(convertNode(children[0]), convertNode(children[1]));
     }
     case "msub": {
       if (children.length < 2) return convertChildren(children);
+      if (getTag(children[0]) === "mo" && isNaryOp(getTextContent(getChildren(children[0])).trim())) {
+        const opText = getTextContent(getChildren(children[0])).trim();
+        return ommlNary(opText, convertNode(children[1]), "", "", "subSup");
+      }
       return ommlSub(convertNode(children[0]), convertNode(children[1]));
     }
     case "msubsup": {
       if (children.length < 3) return convertChildren(children);
+      if (getTag(children[0]) === "mo" && isNaryOp(getTextContent(getChildren(children[0])).trim())) {
+        const opText = getTextContent(getChildren(children[0])).trim();
+        return ommlNary(opText, convertNode(children[1]), convertNode(children[2]), "", "subSup");
+      }
       return ommlSubSup(
         convertNode(children[0]),
         convertNode(children[1]),

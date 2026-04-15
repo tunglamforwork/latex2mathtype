@@ -2805,6 +2805,9 @@ import_electron.app.whenReady().then(() => {
       filters: [{ name: "Word Documents", extensions: ["docx"] }]
     });
   });
+  import_electron.ipcMain.handle("show-item-in-folder", (_event, filePath) => {
+    import_electron.shell.showItemInFolder(filePath);
+  });
   import_electron.ipcMain.handle(
     "convert",
     async (_event, inputPath, outputPath) => {

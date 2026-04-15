@@ -26,6 +26,7 @@ import_electron.contextBridge.exposeInMainWorld("electronAPI", {
   },
   removeProgressListeners: () => {
     import_electron.ipcRenderer.removeAllListeners("progress");
-  }
+  },
+  showItemInFolder: (filePath) => import_electron.ipcRenderer.invoke("show-item-in-folder", filePath)
 });
 //# sourceMappingURL=preload.js.map

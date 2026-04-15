@@ -188,6 +188,14 @@ export function fastConvert(latex: string): string | null {
   return null; // complex — fall through to KaTeX
 }
 
+/** LaTeX commands that are n-ary operators — must go through KaTeX for proper <m:nary> output */
+const NARY_COMMANDS = new Set([
+  'int', 'iint', 'iiint', 'iiiint', 'oint', 'oiint',
+  'sum', 'prod', 'coprod',
+  'bigcup', 'bigcap', 'bigsqcup', 'biguplus',
+  'bigvee', 'bigwedge', 'bigodot', 'bigoplus', 'bigotimes',
+]);
+
 function parseSubSup(src: string): string | null {
   let pos = 0;
 
@@ -195,6 +203,11 @@ function parseSubSup(src: string): string | null {
   const base = parseGroup(src, pos);
   if (!base) return null;
   pos = base.end;
+
+  // If base is a nary operator, fall through to KaTeX for proper <m:nary> output
+  if (base.content.startsWith('\\') && NARY_COMMANDS.has(base.content.slice(1))) {
+    return null;
+  }
 
   while (pos < src.length && src[pos] === ' ') pos++;
   if (pos >= src.length) return null; // no sub/sup
