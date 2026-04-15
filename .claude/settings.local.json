@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node:*)",
+      "Bash(node_modules/.bin/electron dist/main.js)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(node_modules/.pnpm/electron@41.2.0/node_modules/electron/dist/electron.exe dist/main.js)",
+      "Bash(tasklist)"
+    ]
+  }
+}
