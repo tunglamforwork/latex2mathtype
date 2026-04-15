@@ -36,7 +36,8 @@ const OPS: Record<string, string> = {
 };
 
 function xmlEsc(s: string): string {
-  return s
+  const sanitized = s.replace(/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD]/g, '');
+  return sanitized
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
@@ -117,9 +118,30 @@ function groupToOmml(content: string): string {
  * Attempt fast conversion of a LaTeX expression to OMML inner XML.
  * Returns null if the expression is too complex for the fast path.
  */
+/** Commands that are too complex for the fast path — must go through KaTeX */
+const COMPLEX_COMMANDS = new Set([
+  'left', 'right', 'begin', 'end', 'matrix', 'pmatrix', 'bmatrix',
+  'vmatrix', 'Vmatrix', 'cases', 'array', 'aligned', 'align',
+  'text', 'mathrm', 'mathbb', 'mathcal', 'mathbf', 'mathit',
+  'operatorname', 'lim', 'log', 'ln', 'sin', 'cos', 'tan',
+  'sec', 'csc', 'cot', 'arcsin', 'arccos', 'arctan',
+  'min', 'max', 'sup', 'inf', 'det', 'dim', 'ker', 'hom',
+  'exp', 'deg', 'gcd', 'lg', 'Pr',
+  'overline', 'underline', 'hat', 'bar', 'vec', 'dot', 'ddot',
+  'tilde', 'widetilde', 'widehat', 'overrightarrow',
+  'binom', 'tbinom', 'dbinom', 'choose',
+  'not', 'stackrel', 'overset', 'underset',
+]);
+
 export function fastConvert(latex: string): string | null {
   latex = latex.trim();
   if (!latex) return '';
+
+  // Bail out if the expression contains any complex commands
+  const cmdMatches = latex.matchAll(/\\([a-zA-Z]+)/g);
+  for (const m of cmdMatches) {
+    if (COMPLEX_COMMANDS.has(m[1])) return null;
+  }
 
   // --- Single token (no spaces, no special structure) ---
   if (/^[a-zA-Z0-9]$/.test(latex)) {

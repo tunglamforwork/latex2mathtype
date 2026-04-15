@@ -14,15 +14,17 @@
 import * as path from 'path';
 import * as os from 'os';
 import { Worker } from 'worker_threads';
+import { XMLValidator } from 'fast-xml-parser';
 import { unzipDocx } from './unzip';
 import { zipDocx } from './zip';
+import { applyMathTypeToDocx } from './mathtype';
 import { detectLatexInText, LatexMatch } from './detectLatex';
 import { deduplicateLatex, splitIntoBatches, UniqueLatex } from './dedupe';
 import { replaceLatexInXml, ReplaceStats } from './replace';
 import { WorkerResult } from './worker';
 
 export interface ProgressInfo {
-  status: 'scanning' | 'converting' | 'replacing' | 'zipping' | 'done' | 'error';
+  status: 'scanning' | 'converting' | 'replacing' | 'zipping' | 'postprocessing' | 'done' | 'error';
   total: number;
   converted: number;
   failed: number;
@@ -40,6 +42,7 @@ export interface PipelineResult {
     durationMs: number;
   };
   error?: string;
+  warning?: string;
 }
 
 // ── Worker path resolution ─────────────────────────────────────────────────────
@@ -124,6 +127,12 @@ function collectAllLatex(documentXml: string): LatexMatch[] {
   PARA_SCAN_RE.lastIndex = 0;
   let para: RegExpExecArray | null;
 
+  // Decode XML entities from regex-captured text
+  const xmlDec = (s: string) => s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+
   while ((para = PARA_SCAN_RE.exec(documentXml)) !== null) {
     const paraXml = para[0];
     // Merge all <w:t> text within this paragraph
@@ -131,7 +140,7 @@ function collectAllLatex(documentXml: string): LatexMatch[] {
     let merged = '';
     let m: RegExpExecArray | null;
     while ((m = WT_SCAN_RE.exec(paraXml)) !== null) {
-      merged += m[1];
+      merged += xmlDec(m[1]);
     }
     if (merged) {
       all.push(...detectLatexInText(merged));
@@ -139,6 +148,56 @@ function collectAllLatex(documentXml: string): LatexMatch[] {
   }
 
   return all;
+}
+
+// ── XML safety checks ──────────────────────────────────────────────────────────
+
+const INVALID_XML_CHAR_RE = /[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD]/g;
+
+function sanitizeAndValidateDocumentXml(documentXml: string): string {
+  const sanitized = documentXml.replace(INVALID_XML_CHAR_RE, '');
+  const validation = XMLValidator.validate(sanitized);
+  if (validation !== true) {
+    const err = validation.err;
+    throw new Error(
+      `Invalid document.xml after conversion at line ${err.line}, col ${err.col}: ${err.msg}`,
+    );
+  }
+  return sanitized;
+}
+
+async function applyMathTypeWithProgress(
+  outputPath: string,
+  total: number,
+  converted: number,
+  failed: number,
+  onProgress: ProgressCallback,
+): Promise<Awaited<ReturnType<typeof applyMathTypeToDocx>>> {
+  const started = Date.now();
+  onProgress({
+    status: 'postprocessing',
+    total,
+    converted,
+    failed,
+    message: 'Applying MathType format…',
+  });
+
+  const timer = setInterval(() => {
+    const elapsedSec = Math.max(1, Math.floor((Date.now() - started) / 1000));
+    onProgress({
+      status: 'postprocessing',
+      total,
+      converted,
+      failed,
+      message: `Applying MathType format… ${elapsedSec}s`,
+    });
+  }, 1000);
+
+  try {
+    return await applyMathTypeToDocx(outputPath);
+  } finally {
+    clearInterval(timer);
+  }
 }
 
 // ── Main pipeline ─────────────────────────────────────────────────────────────
@@ -170,9 +229,14 @@ export async function pipeline(
       // Nothing to convert — copy file as-is
       const newFiles = new Map(files);
       await zipDocx(newFiles, outputPath);
+      const mt = await applyMathTypeWithProgress(outputPath, 0, 0, 0, onProgress);
+      onProgress({ status: 'done', total: 0, converted: 0, failed: 0 });
       return {
         success: true,
         stats: { total: 0, converted: 0, failed: 0, durationMs: Date.now() - t0 },
+        warning: mt.applied
+          ? mt.details
+          : `MathType post-process failed; output remains OMML equations. ${mt.error ?? ''}`.trim(),
       };
     }
 
@@ -187,18 +251,25 @@ export async function pipeline(
     // ── Step 4: Replace in XML ─────────────────────────────────────────────
     onProgress({ status: 'replacing', total, converted, failed });
     const { xml: newXml } = replaceLatexInXml(documentXml, cache);
+    const safeXml = sanitizeAndValidateDocumentXml(newXml);
 
     // ── Step 5: Zip output ─────────────────────────────────────────────────
     onProgress({ status: 'zipping', total, converted, failed });
     const newFiles = new Map(files);
-    newFiles.set('word/document.xml', Buffer.from(newXml, 'utf-8'));
+    newFiles.set('word/document.xml', Buffer.from(safeXml, 'utf-8'));
     await zipDocx(newFiles, outputPath);
+
+    // ── Step 6: Post-process with MathType (Word automation) ───────────────
+    const mt = await applyMathTypeWithProgress(outputPath, total, converted, failed, onProgress);
 
     onProgress({ status: 'done', total, converted, failed });
 
     return {
       success: true,
       stats: { total, converted, failed, durationMs: Date.now() - t0 },
+      warning: mt.applied
+        ? mt.details
+        : `MathType post-process failed; output remains OMML equations. ${mt.error ?? ''}`.trim(),
     };
   } catch (e) {
     const message = (e as Error).message;

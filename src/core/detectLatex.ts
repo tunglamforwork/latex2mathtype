@@ -67,7 +67,18 @@ export function detectLatexInText(text: string): LatexMatch[] {
     }
   }
 
-  // --- Pass 4: $...$ (inline, single dollar) ---
+  // --- Pass 4: \$...$ (inline, escaped opening dollar) ---
+  // Some source docs contain a literal backslash before the opening delimiter.
+  // Treat this as math delimiters rather than plain text.
+  {
+    const re = /\\\$([\s\S]*?)\$/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      addMatch(m.index, m.index + m[0].length, m[0], m[1], false);
+    }
+  }
+
+  // --- Pass 5: $...$ (inline, single dollar) ---
   // Must not be preceded by \ (escaped), must not be $$
   {
     let i = 0;

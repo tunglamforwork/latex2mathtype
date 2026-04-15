@@ -10,6 +10,7 @@
  */
 
 import { detectLatexInText, LatexMatch } from './detectLatex';
+import { XMLValidator } from 'fast-xml-parser';
 import {
   parseParagraphRuns,
   mergedText,
@@ -25,6 +26,35 @@ export interface ReplaceStats {
   modifiedParagraphs: number;
   converted: number;
   failed: number;
+}
+
+const PARA_VALIDATE_ROOT_SUFFIX = '</root>';
+
+function collectXmlPrefixes(xml: string): string[] {
+  const prefixes = new Set<string>();
+  const re = /([A-Za-z_][\w.-]*):[A-Za-z_][\w.-]*/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    const p = m[1];
+    if (p === 'xml' || p === 'xmlns') continue;
+    prefixes.add(p);
+  }
+  return [...prefixes];
+}
+
+function isValidParagraphXml(paraXml: string): boolean {
+  const prefixes = collectXmlPrefixes(paraXml);
+  const nsDecls = prefixes
+    .map((p) =>
+      p === 'w'
+        ? 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        : p === 'm'
+          ? 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
+          : `xmlns:${p}="urn:auto:${p}"`,
+    )
+    .join(' ');
+  const wrapped = `<root ${nsDecls}>${paraXml}${PARA_VALIDATE_ROOT_SUFFIX}`;
+  return XMLValidator.validate(wrapped) === true;
 }
 
 // ── Paragraph-level replacement ────────────────────────────────────────────────
@@ -51,15 +81,27 @@ function processParagraph(
   const pPr = extractPPr(paraXml);
   const openTag = extractParaOpenTag(paraXml);
 
-  const parts: string[] = [];
-  let cursor = 0;
-
   // Check if entire paragraph is a single display equation
   const isSoleDisplay =
     matches.length === 1 &&
     matches[0].displayMode &&
     text.slice(0, matches[0].start).trim() === '' &&
     text.slice(matches[0].end).trim() === '';
+
+  if (isSoleDisplay) {
+    const omml = cache.get(matches[0].latex);
+    if (omml) {
+      // Discard surrounding whitespace <w:r> runs to prevent invalid XML inside <m:oMathPara>
+      const rebuilt = `${openTag}${pPr}<m:oMathPara>${omml}</m:oMathPara></w:p>`;
+      if (!isValidParagraphXml(rebuilt)) {
+        return { xml: paraXml, converted: 0, failed: 1 };
+      }
+      return { xml: rebuilt, converted: 1, failed: 0 };
+    }
+  }
+
+  const parts: string[] = [];
+  let cursor = 0;
 
   for (const match of matches) {
     // Text before this match
@@ -72,12 +114,7 @@ function processParagraph(
     // LaTeX → OMML
     const omml = cache.get(match.latex);
     if (omml) {
-      if (match.displayMode && isSoleDisplay) {
-        // Will wrap whole paragraph in oMathPara below
-        parts.push(`__DISPLAY_OMML__${omml}__/DISPLAY_OMML__`);
-      } else {
-        parts.push(omml);
-      }
+      parts.push(omml);
       converted++;
     } else {
       // Conversion failed — keep original raw LaTeX as text
@@ -98,17 +135,11 @@ function processParagraph(
 
   const inner = parts.join('');
 
-  // Wrap sole display equations
-  // omml from cache is already "<m:oMath ...>...</m:oMath>", so just wrap in oMathPara
-  if (isSoleDisplay) {
-    const ommlEl = inner.replace(/__DISPLAY_OMML__([\s\S]*?)__\/DISPLAY_OMML__/, '$1');
-    const rebuilt = `${openTag}${pPr}<m:oMathPara>${ommlEl}</m:oMathPara></w:p>`;
-    return { xml: rebuilt, converted, failed };
-  }
-
   // Inline equations: wrap each <m:oMath>...</m:oMath> inline in paragraph
-  // The OMML strings from cache are already full <m:oMath>...</m:oMath> elements
   const rebuilt = `${openTag}${pPr}${inner}</w:p>`;
+  if (!isValidParagraphXml(rebuilt)) {
+    return { xml: paraXml, converted: 0, failed: matches.length };
+  }
   return { xml: rebuilt, converted, failed };
 }
 

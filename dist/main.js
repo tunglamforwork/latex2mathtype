@@ -681,7 +681,7 @@ var require_yauzl = __commonJS({
     exports2.Entry = Entry;
     exports2.LocalFileHeader = LocalFileHeader;
     exports2.RandomAccessReader = RandomAccessReader;
-    function open2(path3, options2, callback) {
+    function open2(path4, options2, callback) {
       if (typeof options2 === "function") {
         callback = options2;
         options2 = null;
@@ -693,7 +693,7 @@ var require_yauzl = __commonJS({
       if (options2.validateEntrySizes == null) options2.validateEntrySizes = true;
       if (options2.strictFileNames == null) options2.strictFileNames = false;
       if (callback == null) callback = defaultCallback;
-      fs2.open(path3, "r", function(err, fd) {
+      fs2.open(path4, "r", function(err, fd) {
         if (err) return callback(err);
         fromFd(fd, options2, function(err2, zipfile) {
           if (err2) fs2.close(fd, defaultCallback);
@@ -2351,17 +2351,353 @@ var require_yazl = __commonJS({
 
 // src/main.ts
 var import_electron = require("electron");
-var path2 = __toESM(require("path"));
+var path3 = __toESM(require("path"));
 
 // src/core/pipeline.ts
-var path = __toESM(require("path"));
+var path2 = __toESM(require("path"));
 var os = __toESM(require("os"));
 var import_worker_threads = require("worker_threads");
+
+// node_modules/.pnpm/fast-xml-parser@5.6.0/node_modules/fast-xml-parser/src/util.js
+var nameStartChar = ":A-Za-z_\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C-\\u200D\\u2070-\\u218F\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD";
+var nameChar = nameStartChar + "\\-.\\d\\u00B7\\u0300-\\u036F\\u203F-\\u2040";
+var nameRegexp = "[" + nameStartChar + "][" + nameChar + "]*";
+var regexName = new RegExp("^" + nameRegexp + "$");
+function getAllMatches(string, regex) {
+  const matches = [];
+  let match = regex.exec(string);
+  while (match) {
+    const allmatches = [];
+    allmatches.startIndex = regex.lastIndex - match[0].length;
+    const len = match.length;
+    for (let index = 0; index < len; index++) {
+      allmatches.push(match[index]);
+    }
+    matches.push(allmatches);
+    match = regex.exec(string);
+  }
+  return matches;
+}
+var isName = function(string) {
+  const match = regexName.exec(string);
+  return !(match === null || typeof match === "undefined");
+};
+
+// node_modules/.pnpm/fast-xml-parser@5.6.0/node_modules/fast-xml-parser/src/validator.js
+var defaultOptions = {
+  allowBooleanAttributes: false,
+  //A tag can have attributes without any value
+  unpairedTags: []
+};
+function validate(xmlData, options2) {
+  options2 = Object.assign({}, defaultOptions, options2);
+  const tags = [];
+  let tagFound = false;
+  let reachedRoot = false;
+  if (xmlData[0] === "\uFEFF") {
+    xmlData = xmlData.substr(1);
+  }
+  for (let i = 0; i < xmlData.length; i++) {
+    if (xmlData[i] === "<" && xmlData[i + 1] === "?") {
+      i += 2;
+      i = readPI(xmlData, i);
+      if (i.err) return i;
+    } else if (xmlData[i] === "<") {
+      let tagStartPos = i;
+      i++;
+      if (xmlData[i] === "!") {
+        i = readCommentAndCDATA(xmlData, i);
+        continue;
+      } else {
+        let closingTag = false;
+        if (xmlData[i] === "/") {
+          closingTag = true;
+          i++;
+        }
+        let tagName = "";
+        for (; i < xmlData.length && xmlData[i] !== ">" && xmlData[i] !== " " && xmlData[i] !== "	" && xmlData[i] !== "\n" && xmlData[i] !== "\r"; i++) {
+          tagName += xmlData[i];
+        }
+        tagName = tagName.trim();
+        if (tagName[tagName.length - 1] === "/") {
+          tagName = tagName.substring(0, tagName.length - 1);
+          i--;
+        }
+        if (!validateTagName(tagName)) {
+          let msg;
+          if (tagName.trim().length === 0) {
+            msg = "Invalid space after '<'.";
+          } else {
+            msg = "Tag '" + tagName + "' is an invalid name.";
+          }
+          return getErrorObject("InvalidTag", msg, getLineNumberForPosition(xmlData, i));
+        }
+        const result = readAttributeStr(xmlData, i);
+        if (result === false) {
+          return getErrorObject("InvalidAttr", "Attributes for '" + tagName + "' have open quote.", getLineNumberForPosition(xmlData, i));
+        }
+        let attrStr = result.value;
+        i = result.index;
+        if (attrStr[attrStr.length - 1] === "/") {
+          const attrStrStart = i - attrStr.length;
+          attrStr = attrStr.substring(0, attrStr.length - 1);
+          const isValid = validateAttributeString(attrStr, options2);
+          if (isValid === true) {
+            tagFound = true;
+          } else {
+            return getErrorObject(isValid.err.code, isValid.err.msg, getLineNumberForPosition(xmlData, attrStrStart + isValid.err.line));
+          }
+        } else if (closingTag) {
+          if (!result.tagClosed) {
+            return getErrorObject("InvalidTag", "Closing tag '" + tagName + "' doesn't have proper closing.", getLineNumberForPosition(xmlData, i));
+          } else if (attrStr.trim().length > 0) {
+            return getErrorObject("InvalidTag", "Closing tag '" + tagName + "' can't have attributes or invalid starting.", getLineNumberForPosition(xmlData, tagStartPos));
+          } else if (tags.length === 0) {
+            return getErrorObject("InvalidTag", "Closing tag '" + tagName + "' has not been opened.", getLineNumberForPosition(xmlData, tagStartPos));
+          } else {
+            const otg = tags.pop();
+            if (tagName !== otg.tagName) {
+              let openPos = getLineNumberForPosition(xmlData, otg.tagStartPos);
+              return getErrorObject(
+                "InvalidTag",
+                "Expected closing tag '" + otg.tagName + "' (opened in line " + openPos.line + ", col " + openPos.col + ") instead of closing tag '" + tagName + "'.",
+                getLineNumberForPosition(xmlData, tagStartPos)
+              );
+            }
+            if (tags.length == 0) {
+              reachedRoot = true;
+            }
+          }
+        } else {
+          const isValid = validateAttributeString(attrStr, options2);
+          if (isValid !== true) {
+            return getErrorObject(isValid.err.code, isValid.err.msg, getLineNumberForPosition(xmlData, i - attrStr.length + isValid.err.line));
+          }
+          if (reachedRoot === true) {
+            return getErrorObject("InvalidXml", "Multiple possible root nodes found.", getLineNumberForPosition(xmlData, i));
+          } else if (options2.unpairedTags.indexOf(tagName) !== -1) {
+          } else {
+            tags.push({ tagName, tagStartPos });
+          }
+          tagFound = true;
+        }
+        for (i++; i < xmlData.length; i++) {
+          if (xmlData[i] === "<") {
+            if (xmlData[i + 1] === "!") {
+              i++;
+              i = readCommentAndCDATA(xmlData, i);
+              continue;
+            } else if (xmlData[i + 1] === "?") {
+              i = readPI(xmlData, ++i);
+              if (i.err) return i;
+            } else {
+              break;
+            }
+          } else if (xmlData[i] === "&") {
+            const afterAmp = validateAmpersand(xmlData, i);
+            if (afterAmp == -1)
+              return getErrorObject("InvalidChar", "char '&' is not expected.", getLineNumberForPosition(xmlData, i));
+            i = afterAmp;
+          } else {
+            if (reachedRoot === true && !isWhiteSpace(xmlData[i])) {
+              return getErrorObject("InvalidXml", "Extra text at the end", getLineNumberForPosition(xmlData, i));
+            }
+          }
+        }
+        if (xmlData[i] === "<") {
+          i--;
+        }
+      }
+    } else {
+      if (isWhiteSpace(xmlData[i])) {
+        continue;
+      }
+      return getErrorObject("InvalidChar", "char '" + xmlData[i] + "' is not expected.", getLineNumberForPosition(xmlData, i));
+    }
+  }
+  if (!tagFound) {
+    return getErrorObject("InvalidXml", "Start tag expected.", 1);
+  } else if (tags.length == 1) {
+    return getErrorObject("InvalidTag", "Unclosed tag '" + tags[0].tagName + "'.", getLineNumberForPosition(xmlData, tags[0].tagStartPos));
+  } else if (tags.length > 0) {
+    return getErrorObject("InvalidXml", "Invalid '" + JSON.stringify(tags.map((t) => t.tagName), null, 4).replace(/\r?\n/g, "") + "' found.", { line: 1, col: 1 });
+  }
+  return true;
+}
+function isWhiteSpace(char) {
+  return char === " " || char === "	" || char === "\n" || char === "\r";
+}
+function readPI(xmlData, i) {
+  const start = i;
+  for (; i < xmlData.length; i++) {
+    if (xmlData[i] == "?" || xmlData[i] == " ") {
+      const tagname = xmlData.substr(start, i - start);
+      if (i > 5 && tagname === "xml") {
+        return getErrorObject("InvalidXml", "XML declaration allowed only at the start of the document.", getLineNumberForPosition(xmlData, i));
+      } else if (xmlData[i] == "?" && xmlData[i + 1] == ">") {
+        i++;
+        break;
+      } else {
+        continue;
+      }
+    }
+  }
+  return i;
+}
+function readCommentAndCDATA(xmlData, i) {
+  if (xmlData.length > i + 5 && xmlData[i + 1] === "-" && xmlData[i + 2] === "-") {
+    for (i += 3; i < xmlData.length; i++) {
+      if (xmlData[i] === "-" && xmlData[i + 1] === "-" && xmlData[i + 2] === ">") {
+        i += 2;
+        break;
+      }
+    }
+  } else if (xmlData.length > i + 8 && xmlData[i + 1] === "D" && xmlData[i + 2] === "O" && xmlData[i + 3] === "C" && xmlData[i + 4] === "T" && xmlData[i + 5] === "Y" && xmlData[i + 6] === "P" && xmlData[i + 7] === "E") {
+    let angleBracketsCount = 1;
+    for (i += 8; i < xmlData.length; i++) {
+      if (xmlData[i] === "<") {
+        angleBracketsCount++;
+      } else if (xmlData[i] === ">") {
+        angleBracketsCount--;
+        if (angleBracketsCount === 0) {
+          break;
+        }
+      }
+    }
+  } else if (xmlData.length > i + 9 && xmlData[i + 1] === "[" && xmlData[i + 2] === "C" && xmlData[i + 3] === "D" && xmlData[i + 4] === "A" && xmlData[i + 5] === "T" && xmlData[i + 6] === "A" && xmlData[i + 7] === "[") {
+    for (i += 8; i < xmlData.length; i++) {
+      if (xmlData[i] === "]" && xmlData[i + 1] === "]" && xmlData[i + 2] === ">") {
+        i += 2;
+        break;
+      }
+    }
+  }
+  return i;
+}
+var doubleQuote = '"';
+var singleQuote = "'";
+function readAttributeStr(xmlData, i) {
+  let attrStr = "";
+  let startChar = "";
+  let tagClosed = false;
+  for (; i < xmlData.length; i++) {
+    if (xmlData[i] === doubleQuote || xmlData[i] === singleQuote) {
+      if (startChar === "") {
+        startChar = xmlData[i];
+      } else if (startChar !== xmlData[i]) {
+      } else {
+        startChar = "";
+      }
+    } else if (xmlData[i] === ">") {
+      if (startChar === "") {
+        tagClosed = true;
+        break;
+      }
+    }
+    attrStr += xmlData[i];
+  }
+  if (startChar !== "") {
+    return false;
+  }
+  return {
+    value: attrStr,
+    index: i,
+    tagClosed
+  };
+}
+var validAttrStrRegxp = new RegExp(`(\\s*)([^\\s=]+)(\\s*=)?(\\s*(['"])(([\\s\\S])*?)\\5)?`, "g");
+function validateAttributeString(attrStr, options2) {
+  const matches = getAllMatches(attrStr, validAttrStrRegxp);
+  const attrNames = {};
+  for (let i = 0; i < matches.length; i++) {
+    if (matches[i][1].length === 0) {
+      return getErrorObject("InvalidAttr", "Attribute '" + matches[i][2] + "' has no space in starting.", getPositionFromMatch(matches[i]));
+    } else if (matches[i][3] !== void 0 && matches[i][4] === void 0) {
+      return getErrorObject("InvalidAttr", "Attribute '" + matches[i][2] + "' is without value.", getPositionFromMatch(matches[i]));
+    } else if (matches[i][3] === void 0 && !options2.allowBooleanAttributes) {
+      return getErrorObject("InvalidAttr", "boolean attribute '" + matches[i][2] + "' is not allowed.", getPositionFromMatch(matches[i]));
+    }
+    const attrName = matches[i][2];
+    if (!validateAttrName(attrName)) {
+      return getErrorObject("InvalidAttr", "Attribute '" + attrName + "' is an invalid name.", getPositionFromMatch(matches[i]));
+    }
+    if (!Object.prototype.hasOwnProperty.call(attrNames, attrName)) {
+      attrNames[attrName] = 1;
+    } else {
+      return getErrorObject("InvalidAttr", "Attribute '" + attrName + "' is repeated.", getPositionFromMatch(matches[i]));
+    }
+  }
+  return true;
+}
+function validateNumberAmpersand(xmlData, i) {
+  let re = /\d/;
+  if (xmlData[i] === "x") {
+    i++;
+    re = /[\da-fA-F]/;
+  }
+  for (; i < xmlData.length; i++) {
+    if (xmlData[i] === ";")
+      return i;
+    if (!xmlData[i].match(re))
+      break;
+  }
+  return -1;
+}
+function validateAmpersand(xmlData, i) {
+  i++;
+  if (xmlData[i] === ";")
+    return -1;
+  if (xmlData[i] === "#") {
+    i++;
+    return validateNumberAmpersand(xmlData, i);
+  }
+  let count = 0;
+  for (; i < xmlData.length; i++, count++) {
+    if (xmlData[i].match(/\w/) && count < 20)
+      continue;
+    if (xmlData[i] === ";")
+      break;
+    return -1;
+  }
+  return i;
+}
+function getErrorObject(code, message, lineNumber) {
+  return {
+    err: {
+      code,
+      msg: message,
+      line: lineNumber.line || lineNumber,
+      col: lineNumber.col
+    }
+  };
+}
+function validateAttrName(attrName) {
+  return isName(attrName);
+}
+function validateTagName(tagname) {
+  return isName(tagname);
+}
+function getLineNumberForPosition(xmlData, index) {
+  const lines = xmlData.substring(0, index).split(/\r?\n/);
+  return {
+    line: lines.length,
+    // column number is last line's length + 1, because column numbering starts at 1:
+    col: lines[lines.length - 1].length + 1
+  };
+}
+function getPositionFromMatch(match) {
+  return match.startIndex + match[1].length;
+}
+
+// node_modules/.pnpm/fast-xml-parser@5.6.0/node_modules/fast-xml-parser/src/fxp.js
+var XMLValidator = {
+  validate
+};
 
 // src/core/unzip.ts
 var yauzl = __toESM(require_yauzl());
 function unzipDocx(filePath) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve2, reject) => {
     const files = /* @__PURE__ */ new Map();
     yauzl.open(filePath, { lazyEntries: true, autoClose: true }, (err, zipfile) => {
       if (err) return reject(err);
@@ -2382,7 +2718,7 @@ function unzipDocx(filePath) {
           readStream.on("error", reject);
         });
       });
-      zipfile.on("end", () => resolve(files));
+      zipfile.on("end", () => resolve2(files));
       zipfile.on("error", reject);
     });
   });
@@ -2392,7 +2728,7 @@ function unzipDocx(filePath) {
 var yazl = __toESM(require_yazl());
 var fs = __toESM(require("fs"));
 function zipDocx(files, outputPath) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve2, reject) => {
     const zipfile = new yazl.ZipFile();
     const entries = [...files.entries()].sort(([a], [b]) => {
       const priority = (p) => p === "[Content_Types].xml" ? 0 : p.startsWith("_rels/") ? 1 : p.endsWith(".rels") ? 2 : 3;
@@ -2407,7 +2743,7 @@ function zipDocx(files, outputPath) {
     zipfile.end();
     const outStream = fs.createWriteStream(outputPath);
     zipfile.outputStream.pipe(outStream);
-    outStream.on("finish", resolve);
+    outStream.on("finish", resolve2);
     outStream.on("error", reject);
     zipfile.outputStream.on("error", reject);
   });
@@ -2416,6 +2752,194 @@ function shouldCompress(fileName) {
   const noCompress = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".wmf", ".emf"];
   const ext = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
   return !noCompress.includes(ext);
+}
+
+// src/core/mathtype.ts
+var import_child_process = require("child_process");
+var path = __toESM(require("path"));
+function runPowerShellScript(script) {
+  return new Promise((resolve2, reject) => {
+    const encoded = Buffer.from(script, "utf16le").toString("base64");
+    (0, import_child_process.execFile)(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded],
+      { windowsHide: true, maxBuffer: 4 * 1024 * 1024, timeout: 9e4 },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr?.trim() || error.message));
+          return;
+        }
+        resolve2({ stdout: stdout.trim(), stderr: stderr.trim() });
+      }
+    );
+  });
+}
+function cleanPowerShellError(raw) {
+  return raw.replace(/^#<\s*CLIXML[\s\S]*?<S S="Error">/g, "").replace(/<\/S>/g, "\n").replace(/<[^>]+>/g, "").replace(/_x000D__x000A_/g, "\n").replace(/\s+\n/g, "\n").trim();
+}
+function psString(value) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+async function applyMathTypeToDocx(docxPath) {
+  if (process.platform !== "win32") {
+    return { applied: false, error: "MathType post-processing is only supported on Windows." };
+  }
+  const absPath = path.resolve(docxPath).replace(/\//g, "\\");
+  const ps = `
+$ProgressPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Stop'
+$docPath = ${psString(absPath)}
+$word = $null
+$doc = $null
+$applied = $false
+$attemptLog = @()
+
+function Try-Run([scriptblock]$fn, [string]$name) {
+  try {
+    & $fn
+    $script:attemptLog += "OK: $name"
+    return $true
+  } catch {
+    $script:attemptLog += "FAIL: $name :: $($_.Exception.Message)"
+    return $false
+  }
+}
+
+try {
+  $word = New-Object -ComObject Word.Application
+  $word.Visible = $false
+  $word.DisplayAlerts = 0
+  $doc = $word.Documents.Open($docPath, $false, $false)
+  $doc.Activate() | Out-Null
+
+  # MathType macro path used by Word integration
+  if (-not $applied) {
+    $fromType = [ref]2
+    $toType = [ref]3
+    $entireDoc = [ref]$true
+    $convertText = [ref]$false
+    $showDialog = [ref]$false
+    $translator = [ref]'MathML2 (no namespace).tdl'
+    $reserved = [ref]0
+    $applied = Try-Run {
+      $word.Run('MTCommandsMain.DoConvertEquations', $entireDoc, $fromType, $convertText, $showDialog, $translator, $reserved, $toType) | Out-Null
+    } 'MTCommandsMain.DoConvertEquations(by-ref args)'
+  }
+
+  # Fallback attempt with no explicit args
+  if (-not $applied) {
+    $applied = Try-Run { $word.Run('MTCommandsMain.DoConvertEquations') | Out-Null } 'MTCommandsMain.DoConvertEquations()'
+  }
+
+  # Fallback attempt: template-qualified macro names (MathType Word templates vary by version)
+  if (-not $applied) {
+    $templateCandidates = @()
+    foreach ($tpl in $word.Templates) {
+      $name = ''
+      try { $name = [string]$tpl.Name } catch {}
+      if ($name -match 'MathType|WordCmds|Equation') {
+        $templateCandidates += $name
+      }
+    }
+    $macroNames = @(
+      'MTCommandsMain.DoConvertEquations',
+      'DoConvertEquations',
+      'MTCommand_ConvertEquations',
+      'MTConvertEquations'
+    )
+    foreach ($tplName in $templateCandidates) {
+      foreach ($macro in $macroNames) {
+        $qualified = "$tplName!$macro"
+        if (Try-Run { $word.Run($qualified) | Out-Null } "Run macro: $qualified") {
+          $applied = $true
+          break
+        }
+      }
+      if ($applied) { break }
+    }
+  }
+
+  function Invoke-MathTypeControl([object]$controls) {
+    foreach ($ctrl in $controls) {
+      $caption = ''
+      $tooltip = ''
+      try { $caption = [string]$ctrl.Caption } catch {}
+      try { $tooltip = [string]$ctrl.TooltipText } catch {}
+      $text = "$caption $tooltip"
+      if (
+        ($text -match 'MathType' -and $text -match 'Convert') -or
+        ($text -match 'Convert Equations')
+      ) {
+        if (Try-Run { $ctrl.Execute() | Out-Null } "CommandBar Execute: $text") {
+          return $true
+        }
+      }
+      try {
+        if ($ctrl.Controls -and $ctrl.Controls.Count -gt 0) {
+          if (Invoke-MathTypeControl $ctrl.Controls) {
+            return $true
+          }
+        }
+      } catch {}
+    }
+    return $false
+  }
+
+  # Fallback attempt: execute command bar controls related to MathType conversion
+  if (-not $applied) {
+    foreach ($bar in $word.CommandBars) {
+      if (Invoke-MathTypeControl $bar.Controls) {
+        $applied = $true
+        break
+      }
+    }
+  }
+
+  if ($applied) {
+    $doc.Save() | Out-Null
+    Write-Output "APPLIED"
+  } else {
+    $attempts = [string]::Join(" || ", $attemptLog)
+    throw "Could not invoke MathType conversion macro in Word. Attempts: $attempts"
+  }
+} finally {
+  if ($doc -ne $null) {
+    try { $doc.Close($true) | Out-Null } catch {}
+  }
+  if ($word -ne $null) {
+    try { $word.Quit() | Out-Null } catch {}
+  }
+  [System.GC]::Collect()
+  [System.GC]::WaitForPendingFinalizers()
+}
+`;
+  async function runOnce() {
+    const { stdout } = await runPowerShellScript(ps);
+    const applied = stdout.includes("APPLIED");
+    if (!applied) {
+      return {
+        applied: false,
+        error: "MathType conversion did not report success.",
+        details: stdout
+      };
+    }
+    return { applied: true, details: stdout };
+  }
+  try {
+    return await runOnce();
+  } catch (e) {
+    const firstError = cleanPowerShellError(e.message);
+    if (/RPC server is unavailable|0x800706BA/i.test(firstError)) {
+      await new Promise((resolve2) => setTimeout(resolve2, 1500));
+      try {
+        return await runOnce();
+      } catch (e2) {
+        const secondError = cleanPowerShellError(e2.message);
+        return { applied: false, error: `${secondError} (after retry)` };
+      }
+    }
+    return { applied: false, error: firstError };
+  }
 }
 
 // src/core/detectLatex.ts
@@ -2449,6 +2973,13 @@ function detectLatexInText(text) {
   }
   {
     const re = /\\\(([\s\S]*?)\\\)/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      addMatch(m.index, m.index + m[0].length, m[0], m[1], false);
+    }
+  }
+  {
+    const re = /\\\$([\s\S]*?)\$/g;
     let m;
     while ((m = re.exec(text)) !== null) {
       addMatch(m.index, m.index + m[0].length, m[0], m[1], false);
@@ -2527,12 +3058,15 @@ function splitIntoBatches(items, n) {
 
 // src/core/parse.ts
 var WT_RE = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g;
+function xmlDecText(s) {
+  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
 function extractRunText(runXml) {
   const parts = [];
   WT_RE.lastIndex = 0;
   let m;
   while ((m = WT_RE.exec(runXml)) !== null) {
-    parts.push(m[1]);
+    parts.push(xmlDecText(m[1]));
   }
   return parts.join("");
 }
@@ -2578,15 +3112,39 @@ function buildRun(rPr, text) {
   return `<w:r>${rPr}<w:t${preserve}>${escaped}</w:t></w:r>`;
 }
 function xmlEscText(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const sanitized = s.replace(/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD]/g, "");
+  return sanitized.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 var M_NS = 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
 function ensureMathNamespace(xml) {
-  if (xml.includes(M_NS)) return xml;
+  const docTagMatch = xml.match(/<w:document\b[^>]*>/);
+  if (!docTagMatch) return xml;
+  const docTag = docTagMatch[0];
+  if (docTag.includes(M_NS)) return xml;
   return xml.replace(/(<w:document\b)/, `$1 ${M_NS}`);
 }
 
 // src/core/replace.ts
+var PARA_VALIDATE_ROOT_SUFFIX = "</root>";
+function collectXmlPrefixes(xml) {
+  const prefixes = /* @__PURE__ */ new Set();
+  const re = /([A-Za-z_][\w.-]*):[A-Za-z_][\w.-]*/g;
+  let m;
+  while ((m = re.exec(xml)) !== null) {
+    const p = m[1];
+    if (p === "xml" || p === "xmlns") continue;
+    prefixes.add(p);
+  }
+  return [...prefixes];
+}
+function isValidParagraphXml(paraXml) {
+  const prefixes = collectXmlPrefixes(paraXml);
+  const nsDecls = prefixes.map(
+    (p) => p === "w" ? 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"' : p === "m" ? 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"' : `xmlns:${p}="urn:auto:${p}"`
+  ).join(" ");
+  const wrapped = `<root ${nsDecls}>${paraXml}${PARA_VALIDATE_ROOT_SUFFIX}`;
+  return XMLValidator.validate(wrapped) === true;
+}
 function processParagraph(paraXml, cache) {
   const segments = parseParagraphRuns(paraXml);
   if (segments.length === 0) return { xml: paraXml, converted: 0, failed: 0 };
@@ -2597,9 +3155,19 @@ function processParagraph(paraXml, cache) {
   let failed = 0;
   const pPr = extractPPr(paraXml);
   const openTag = extractParaOpenTag(paraXml);
+  const isSoleDisplay = matches.length === 1 && matches[0].displayMode && text.slice(0, matches[0].start).trim() === "" && text.slice(matches[0].end).trim() === "";
+  if (isSoleDisplay) {
+    const omml = cache.get(matches[0].latex);
+    if (omml) {
+      const rebuilt2 = `${openTag}${pPr}<m:oMathPara>${omml}</m:oMathPara></w:p>`;
+      if (!isValidParagraphXml(rebuilt2)) {
+        return { xml: paraXml, converted: 0, failed: 1 };
+      }
+      return { xml: rebuilt2, converted: 1, failed: 0 };
+    }
+  }
   const parts = [];
   let cursor = 0;
-  const isSoleDisplay = matches.length === 1 && matches[0].displayMode && text.slice(0, matches[0].start).trim() === "" && text.slice(matches[0].end).trim() === "";
   for (const match of matches) {
     if (cursor < match.start) {
       const before = text.slice(cursor, match.start);
@@ -2608,11 +3176,7 @@ function processParagraph(paraXml, cache) {
     }
     const omml = cache.get(match.latex);
     if (omml) {
-      if (match.displayMode && isSoleDisplay) {
-        parts.push(`__DISPLAY_OMML__${omml}__/DISPLAY_OMML__`);
-      } else {
-        parts.push(omml);
-      }
+      parts.push(omml);
       converted++;
     } else {
       const rPr = rPrAtPos(segments, match.start);
@@ -2627,12 +3191,10 @@ function processParagraph(paraXml, cache) {
     parts.push(buildRun(rPr, after));
   }
   const inner = parts.join("");
-  if (isSoleDisplay) {
-    const ommlEl = inner.replace(/__DISPLAY_OMML__([\s\S]*?)__\/DISPLAY_OMML__/, "$1");
-    const rebuilt2 = `${openTag}${pPr}<m:oMathPara>${ommlEl}</m:oMathPara></w:p>`;
-    return { xml: rebuilt2, converted, failed };
-  }
   const rebuilt = `${openTag}${pPr}${inner}</w:p>`;
+  if (!isValidParagraphXml(rebuilt)) {
+    return { xml: paraXml, converted: 0, failed: matches.length };
+  }
   return { xml: rebuilt, converted, failed };
 }
 var PARA_RE = /<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g;
@@ -2657,12 +3219,12 @@ function replaceLatexInXml(documentXml, cache) {
 
 // src/core/pipeline.ts
 function getWorkerPath() {
-  return path.join(__dirname, "core", "worker.js");
+  return path2.join(__dirname, "core", "worker.js");
 }
 function runWorker(workerPath, batch) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve2, reject) => {
     const worker = new import_worker_threads.Worker(workerPath, { workerData: { batch } });
-    worker.on("message", (results) => resolve(results));
+    worker.on("message", (results) => resolve2(results));
     worker.on("error", reject);
     worker.on("exit", (code) => {
       if (code !== 0) reject(new Error(`Worker exited with code ${code}`));
@@ -2704,19 +3266,57 @@ function collectAllLatex(documentXml) {
   const all = [];
   PARA_SCAN_RE.lastIndex = 0;
   let para;
+  const xmlDec = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
   while ((para = PARA_SCAN_RE.exec(documentXml)) !== null) {
     const paraXml = para[0];
     WT_SCAN_RE.lastIndex = 0;
     let merged = "";
     let m;
     while ((m = WT_SCAN_RE.exec(paraXml)) !== null) {
-      merged += m[1];
+      merged += xmlDec(m[1]);
     }
     if (merged) {
       all.push(...detectLatexInText(merged));
     }
   }
   return all;
+}
+var INVALID_XML_CHAR_RE = /[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD]/g;
+function sanitizeAndValidateDocumentXml(documentXml) {
+  const sanitized = documentXml.replace(INVALID_XML_CHAR_RE, "");
+  const validation = XMLValidator.validate(sanitized);
+  if (validation !== true) {
+    const err = validation.err;
+    throw new Error(
+      `Invalid document.xml after conversion at line ${err.line}, col ${err.col}: ${err.msg}`
+    );
+  }
+  return sanitized;
+}
+async function applyMathTypeWithProgress(outputPath, total, converted, failed, onProgress) {
+  const started = Date.now();
+  onProgress({
+    status: "postprocessing",
+    total,
+    converted,
+    failed,
+    message: "Applying MathType format\u2026"
+  });
+  const timer = setInterval(() => {
+    const elapsedSec = Math.max(1, Math.floor((Date.now() - started) / 1e3));
+    onProgress({
+      status: "postprocessing",
+      total,
+      converted,
+      failed,
+      message: `Applying MathType format\u2026 ${elapsedSec}s`
+    });
+  }, 1e3);
+  try {
+    return await applyMathTypeToDocx(outputPath);
+  } finally {
+    clearInterval(timer);
+  }
 }
 async function pipeline(inputPath, outputPath, onProgress = () => {
 }) {
@@ -2735,9 +3335,12 @@ async function pipeline(inputPath, outputPath, onProgress = () => {
     if (total === 0) {
       const newFiles2 = new Map(files);
       await zipDocx(newFiles2, outputPath);
+      const mt2 = await applyMathTypeWithProgress(outputPath, 0, 0, 0, onProgress);
+      onProgress({ status: "done", total: 0, converted: 0, failed: 0 });
       return {
         success: true,
-        stats: { total: 0, converted: 0, failed: 0, durationMs: Date.now() - t0 }
+        stats: { total: 0, converted: 0, failed: 0, durationMs: Date.now() - t0 },
+        warning: mt2.applied ? mt2.details : `MathType post-process failed; output remains OMML equations. ${mt2.error ?? ""}`.trim()
       };
     }
     onProgress({ status: "scanning", total, converted: 0, failed: 0 });
@@ -2746,14 +3349,17 @@ async function pipeline(inputPath, outputPath, onProgress = () => {
     const failed = total - converted;
     onProgress({ status: "replacing", total, converted, failed });
     const { xml: newXml } = replaceLatexInXml(documentXml, cache);
+    const safeXml = sanitizeAndValidateDocumentXml(newXml);
     onProgress({ status: "zipping", total, converted, failed });
     const newFiles = new Map(files);
-    newFiles.set("word/document.xml", Buffer.from(newXml, "utf-8"));
+    newFiles.set("word/document.xml", Buffer.from(safeXml, "utf-8"));
     await zipDocx(newFiles, outputPath);
+    const mt = await applyMathTypeWithProgress(outputPath, total, converted, failed, onProgress);
     onProgress({ status: "done", total, converted, failed });
     return {
       success: true,
-      stats: { total, converted, failed, durationMs: Date.now() - t0 }
+      stats: { total, converted, failed, durationMs: Date.now() - t0 },
+      warning: mt.applied ? mt.details : `MathType post-process failed; output remains OMML equations. ${mt.error ?? ""}`.trim()
     };
   } catch (e) {
     const message = e.message;
@@ -2774,13 +3380,13 @@ function createWindow() {
     resizable: false,
     title: "LaTeX \u2192 MathType Converter",
     webPreferences: {
-      preload: path2.join(__dirname, "preload.js"),
+      preload: path3.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
     }
   });
-  win.loadFile(path2.join(__dirname, "renderer/index.html"));
+  win.loadFile(path3.join(__dirname, "renderer/index.html"));
   if (!import_electron.app.isPackaged) {
     win.webContents.openDevTools({ mode: "detach" });
   }

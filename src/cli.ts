@@ -47,6 +47,9 @@ async function main() {
   console.log(`Duration:         ${durationMs} ms`);
   console.log('─'.repeat(50));
   console.log(`Output: ${outputPath}`);
+  if (result.warning) {
+    console.log(`Note: ${result.warning}`);
+  }
 }
 
 main().catch((e) => {

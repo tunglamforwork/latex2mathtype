@@ -28,13 +28,21 @@ export interface RunSegment {
 /** Match a <w:t> element and capture its text content */
 const WT_RE = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g;
 
-/** Extract concatenated text from inside a run */
+/** Decode XML entities back to plain text (reverses xmlEscText) */
+function xmlDecText(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+/** Extract concatenated text from inside a run (decoded from XML entities) */
 function extractRunText(runXml: string): string {
   const parts: string[] = [];
   WT_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = WT_RE.exec(runXml)) !== null) {
-    parts.push(m[1]);
+    parts.push(xmlDecText(m[1]));
   }
   return parts.join('');
 }
@@ -111,7 +119,8 @@ export function buildRun(rPr: string, text: string): string {
 
 /** XML-escape text content (for use inside <w:t>) */
 export function xmlEscText(s: string): string {
-  return s
+  const sanitized = s.replace(/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD]/g, '');
+  return sanitized
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
@@ -123,10 +132,16 @@ const M_NS = 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/mat
 
 /**
  * Ensure the math namespace (m:) is declared on the root <w:document> element.
- * No-op if already present.
+ * No-op if already present on the root element.
  */
 export function ensureMathNamespace(xml: string): string {
-  if (xml.includes(M_NS)) return xml;
+  // Check specifically if the <w:document> tag has the m: namespace
+  const docTagMatch = xml.match(/<w:document\b[^>]*>/);
+  if (!docTagMatch) return xml;
+
+  const docTag = docTagMatch[0];
+  if (docTag.includes(M_NS)) return xml;
+
   // Inject into the opening <w:document> tag
   return xml.replace(/(<w:document\b)/, `$1 ${M_NS}`);
 }

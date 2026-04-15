@@ -28,19 +28,17 @@ export interface WorkerResult {
 // Pre-warm KaTeX once when the worker starts
 preloadKatex();
 
-const MATH_NS = 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
-
 function convertOne(latex: string, displayMode: boolean): string {
   // Fast path: try simple parser first
   const fast = fastConvert(latex);
   if (fast !== null) {
-    return `<m:oMath ${MATH_NS}>${fast}</m:oMath>`;
+    return `<m:oMath>${fast}</m:oMath>`;
   }
 
   // Full path: KaTeX → MathML → OMML
   const mathml = latexToMathML(latex, displayMode);
   const inner = mathMLToOmmlInner(mathml);
-  return `<m:oMath ${MATH_NS}>${inner}</m:oMath>`;
+  return `<m:oMath>${inner}</m:oMath>`;
 }
 
 if (parentPort) {

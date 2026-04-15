@@ -115,7 +115,8 @@ var OPS = {
   int: "\u222B"
 };
 function xmlEsc(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const sanitized = s.replace(/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD]/g, "");
+  return sanitized.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 function run(text2, style) {
   const rPr = style && style !== "n" ? `<m:rPr><m:sty m:val="${style}"/></m:rPr>` : "";
@@ -164,9 +165,79 @@ function tokenToOmml(token) {
 function groupToOmml(content) {
   return fastConvert(content) ?? tokenToOmml(content);
 }
+var COMPLEX_COMMANDS = /* @__PURE__ */ new Set([
+  "left",
+  "right",
+  "begin",
+  "end",
+  "matrix",
+  "pmatrix",
+  "bmatrix",
+  "vmatrix",
+  "Vmatrix",
+  "cases",
+  "array",
+  "aligned",
+  "align",
+  "text",
+  "mathrm",
+  "mathbb",
+  "mathcal",
+  "mathbf",
+  "mathit",
+  "operatorname",
+  "lim",
+  "log",
+  "ln",
+  "sin",
+  "cos",
+  "tan",
+  "sec",
+  "csc",
+  "cot",
+  "arcsin",
+  "arccos",
+  "arctan",
+  "min",
+  "max",
+  "sup",
+  "inf",
+  "det",
+  "dim",
+  "ker",
+  "hom",
+  "exp",
+  "deg",
+  "gcd",
+  "lg",
+  "Pr",
+  "overline",
+  "underline",
+  "hat",
+  "bar",
+  "vec",
+  "dot",
+  "ddot",
+  "tilde",
+  "widetilde",
+  "widehat",
+  "overrightarrow",
+  "binom",
+  "tbinom",
+  "dbinom",
+  "choose",
+  "not",
+  "stackrel",
+  "overset",
+  "underset"
+]);
 function fastConvert(latex) {
   latex = latex.trim();
   if (!latex) return "";
+  const cmdMatches = latex.matchAll(/\\([a-zA-Z]+)/g);
+  for (const m of cmdMatches) {
+    if (COMPLEX_COMMANDS.has(m[1])) return null;
+  }
   if (/^[a-zA-Z0-9]$/.test(latex)) {
     return tokenToOmml(latex);
   }
@@ -17445,7 +17516,8 @@ function getAccentChar(text2) {
   return ACCENT_MAP[text2.trim()] ?? null;
 }
 function xmlEsc2(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const sanitized = String(s).replace(/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD]/g, "");
+  return sanitized.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 function getTag(node) {
   for (const key of Object.keys(node)) {
@@ -17760,15 +17832,14 @@ function mathMLToOmmlInner(mathml) {
 
 // src/core/worker.ts
 preloadKatex();
-var MATH_NS = 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
 function convertOne(latex, displayMode) {
   const fast = fastConvert(latex);
   if (fast !== null) {
-    return `<m:oMath ${MATH_NS}>${fast}</m:oMath>`;
+    return `<m:oMath>${fast}</m:oMath>`;
   }
   const mathml = latexToMathML(latex, displayMode);
   const inner2 = mathMLToOmmlInner(mathml);
-  return `<m:oMath ${MATH_NS}>${inner2}</m:oMath>`;
+  return `<m:oMath>${inner2}</m:oMath>`;
 }
 if (import_worker_threads.parentPort) {
   const { batch } = import_worker_threads.workerData;

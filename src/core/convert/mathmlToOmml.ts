@@ -49,7 +49,8 @@ function getAccentChar(text: string): string | null {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function xmlEsc(s: string): string {
-  return String(s)
+  const sanitized = String(s).replace(/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD]/g, '');
+  return sanitized
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

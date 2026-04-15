@@ -96,6 +96,7 @@
     converting: "Converting equations\u2026",
     replacing: "Rebuilding document\u2026",
     zipping: "Writing output file\u2026",
+    postprocessing: "Applying MathType format\u2026",
     done: "Done",
     error: "Error"
   };
@@ -104,14 +105,15 @@
     converting: "badge-converting",
     replacing: "badge-replacing",
     zipping: "badge-zipping",
+    postprocessing: "badge-zipping",
     done: "badge-done",
     error: "badge-error"
   };
   function updateProgress(info) {
-    const { status, total, converted, failed } = info;
+    const { status, total, converted, failed, message } = info;
     statusBadge.className = `badge ${STATUS_BADGE_CLASSES[status] ?? "badge-scanning"}`;
     statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-    progressStatus.textContent = STATUS_LABELS[status] ?? status;
+    progressStatus.textContent = message ?? STATUS_LABELS[status] ?? status;
     const pct = total > 0 ? Math.round(converted / total * 100) : 0;
     progressBar.style.width = `${pct}%`;
     statConverted.textContent = `${converted} converted`;
@@ -144,6 +146,9 @@
     statusBadge.className = "badge badge-done";
     statusBadge.textContent = "Done";
     progressStatus.textContent = total === 0 ? "No LaTeX equations found in document." : `Converted ${converted} of ${total} equations.`;
+    if (result.warning) {
+      progressStatus.textContent += " MathType post-process had warnings.";
+    }
     progressBar.style.width = "100%";
     resTotal.textContent = String(total);
     resConverted.textContent = String(converted);

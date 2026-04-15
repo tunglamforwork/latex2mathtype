@@ -144,6 +144,7 @@ const STATUS_LABELS: Record<string, string> = {
   converting: 'Converting equations…',
   replacing:  'Rebuilding document…',
   zipping:    'Writing output file…',
+  postprocessing: 'Applying MathType format…',
   done:       'Done',
   error:      'Error',
 };
@@ -153,18 +154,19 @@ const STATUS_BADGE_CLASSES: Record<string, string> = {
   converting: 'badge-converting',
   replacing:  'badge-replacing',
   zipping:    'badge-zipping',
+  postprocessing: 'badge-zipping',
   done:       'badge-done',
   error:      'badge-error',
 };
 
 function updateProgress(info: ProgressInfo) {
-  const { status, total, converted, failed } = info;
+  const { status, total, converted, failed, message } = info;
 
   // Badge
   statusBadge.className = `badge ${STATUS_BADGE_CLASSES[status] ?? 'badge-scanning'}`;
   statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
 
-  progressStatus.textContent = STATUS_LABELS[status] ?? status;
+  progressStatus.textContent = message ?? STATUS_LABELS[status] ?? status;
 
   // Bar
   const pct = total > 0 ? Math.round((converted / total) * 100) : 0;
@@ -207,6 +209,9 @@ function showResult(result: PipelineResult) {
   progressStatus.textContent = total === 0
     ? 'No LaTeX equations found in document.'
     : `Converted ${converted} of ${total} equations.`;
+  if (result.warning) {
+    progressStatus.textContent += ' MathType post-process had warnings.';
+  }
   progressBar.style.width = '100%';
 
   resTotal.textContent     = String(total);
