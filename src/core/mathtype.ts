@@ -76,12 +76,12 @@ try {
   $doc = $word.Documents.Open($docPath, $false, $false)
   $doc.Activate() | Out-Null
 
-  # MathType macro: convert OMML (type 3) → MathType OLE (type 1)
+  # MathType macro: convert OMML (type 3) → WMF/picture (iToType=2)
   # DoConvertEquations(bEntireDoc, iFromType, bConvertText, bShowDlg, sTranslator, lReserved, iToType)
   if (-not $applied) {
     $applied = Try-Run {
-      $word.Run('MTCommandsMain.DoConvertEquations', $true, 3, $false, $false, '', 0, 1) | Out-Null
-    } 'MTCommandsMain.DoConvertEquations(OMML->MathType)'
+      $word.Run('MTCommandsMain.DoConvertEquations', $true, 3, $false, $false, '', 0, 2) | Out-Null
+    } 'MTCommandsMain.DoConvertEquations(OMML->WMF/picture)'
   }
 
   # Fallback: no args (lets MathType use its own defaults/dialog suppressed)
@@ -108,8 +108,8 @@ try {
     foreach ($tplName in $templateCandidates) {
       foreach ($macro in $macroNames) {
         $qualified = "$tplName!$macro"
-        # Try with correct OMML→MathType args first, then no args
-        if (Try-Run { $word.Run($qualified, $true, 3, $false, $false, '', 0, 1) | Out-Null } "Run macro (OMML->MT): $qualified") {
+        # Try with correct OMML→WMF/picture args first, then no args
+        if (Try-Run { $word.Run($qualified, $true, 3, $false, $false, '', 0, 2) | Out-Null } "Run macro (OMML->WMF): $qualified") {
           $applied = $true
           break
         }

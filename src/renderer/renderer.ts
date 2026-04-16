@@ -34,6 +34,7 @@ const resConverted   = document.getElementById('res-converted')!;
 const resFailed      = document.getElementById('res-failed')!;
 const resTime        = document.getElementById('res-time')!;
 const errorMsg       = document.getElementById('error-msg')!;
+const warningMsg     = document.getElementById('warning-msg')!;
 const successRow     = document.getElementById('success-row')!;
 const btnOpenFolder  = document.getElementById('btn-open-folder') as HTMLButtonElement;
 
@@ -182,6 +183,7 @@ function showProgress() {
   progressPanel.classList.add('visible');
   resultRow.style.display = 'none';
   errorMsg.style.display = 'none';
+  warningMsg.style.display = 'none';
   successRow.style.display = 'none';
 }
 
@@ -190,6 +192,7 @@ function resetProgress() {
   progressBar.style.width = '0%';
   resultRow.style.display = 'none';
   errorMsg.style.display = 'none';
+  warningMsg.style.display = 'none';
   successRow.style.display = 'none';
 }
 
@@ -211,6 +214,8 @@ function showResult(result: PipelineResult) {
     : `Converted ${converted} of ${total} equations.`;
   if (result.warning) {
     progressStatus.textContent += ' MathType post-process had warnings.';
+    warningMsg.textContent = result.warning;
+    warningMsg.style.display = 'block';
   }
   progressBar.style.width = '100%';
 

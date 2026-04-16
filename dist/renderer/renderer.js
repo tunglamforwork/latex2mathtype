@@ -18,6 +18,7 @@
   var resFailed = document.getElementById("res-failed");
   var resTime = document.getElementById("res-time");
   var errorMsg = document.getElementById("error-msg");
+  var warningMsg = document.getElementById("warning-msg");
   var successRow = document.getElementById("success-row");
   var btnOpenFolder = document.getElementById("btn-open-folder");
   var selectedFilePath = null;
@@ -124,6 +125,7 @@
     progressPanel.classList.add("visible");
     resultRow.style.display = "none";
     errorMsg.style.display = "none";
+    warningMsg.style.display = "none";
     successRow.style.display = "none";
   }
   function resetProgress() {
@@ -131,6 +133,7 @@
     progressBar.style.width = "0%";
     resultRow.style.display = "none";
     errorMsg.style.display = "none";
+    warningMsg.style.display = "none";
     successRow.style.display = "none";
   }
   function showResult(result) {
@@ -148,6 +151,8 @@
     progressStatus.textContent = total === 0 ? "No LaTeX equations found in document." : `Converted ${converted} of ${total} equations.`;
     if (result.warning) {
       progressStatus.textContent += " MathType post-process had warnings.";
+      warningMsg.textContent = result.warning;
+      warningMsg.style.display = "block";
     }
     progressBar.style.width = "100%";
     resTotal.textContent = String(total);
