@@ -24,7 +24,7 @@ async function build() {
       outfile: 'dist/main.js',
       platform: 'node',
       target: 'node20',
-      external: ['electron'],
+      external: ['electron', 'puppeteer-core'],
       format: 'cjs',
     }),
     // Preload script
@@ -34,7 +34,7 @@ async function build() {
       outfile: 'dist/preload.js',
       platform: 'node',
       target: 'node20',
-      external: ['electron'],
+      external: ['electron', 'puppeteer-core'],
       format: 'cjs',
     }),
     // Renderer (browser context)
@@ -53,7 +53,7 @@ async function build() {
       outfile: 'dist/core/worker.js',
       platform: 'node',
       target: 'node20',
-      external: ['electron'],
+      external: ['electron', 'puppeteer-core'],
       format: 'cjs',
     }),
     // CLI (optional)
@@ -63,7 +63,7 @@ async function build() {
       outfile: 'dist/cli.js',
       platform: 'node',
       target: 'node20',
-      external: ['electron'],
+      external: ['electron', 'puppeteer-core'],
       format: 'cjs',
     }),
   ]);

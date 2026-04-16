@@ -145,3 +145,39 @@ export function ensureMathNamespace(xml: string): string {
   // Inject into the opening <w:document> tag
   return xml.replace(/(<w:document\b)/, `$1 ${M_NS}`);
 }
+
+/** Namespace declarations required for inline image drawings */
+const DRAWING_NS = [
+  'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"',
+  'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"',
+  'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"',
+  'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"',
+];
+
+/**
+ * Ensure drawing namespaces (wp:, a:, pic:, r:) are declared on the root
+ * <w:document> element. Required when inserting <w:drawing> image fallbacks.
+ * No-op for each namespace that is already present.
+ */
+export function ensureDrawingNamespaces(xml: string): string {
+  const docTagMatch = xml.match(/<w:document\b[^>]*>/);
+  if (!docTagMatch) return xml;
+
+  const docTag = docTagMatch[0];
+  const missing = DRAWING_NS.filter(ns => !docTag.includes(ns));
+  if (missing.length === 0) return xml;
+
+  const inject = missing.join(' ');
+  return xml.replace(/(<w:document\b)/, `$1 ${inject}`);
+}
+
+// ── Math-region stripping ──────────────────────────────────────────────────────
+
+/**
+ * Strip already-converted <m:oMath> regions from paragraph XML before run
+ * detection. Prevents false-positive LaTeX matches inside existing OMML equations
+ * (e.g., if an OMML element string incidentally contains a $ character).
+ */
+export function stripMathRegions(paraXml: string): string {
+  return paraXml.replace(/<m:oMath[\s\S]*?<\/m:oMath>/g, '');
+}

@@ -76,21 +76,15 @@ try {
   $doc = $word.Documents.Open($docPath, $false, $false)
   $doc.Activate() | Out-Null
 
-  # MathType macro path used by Word integration
+  # MathType macro: convert OMML (type 3) → MathType OLE (type 1)
+  # DoConvertEquations(bEntireDoc, iFromType, bConvertText, bShowDlg, sTranslator, lReserved, iToType)
   if (-not $applied) {
-    $fromType = [ref]2
-    $toType = [ref]3
-    $entireDoc = [ref]$true
-    $convertText = [ref]$false
-    $showDialog = [ref]$false
-    $translator = [ref]'MathML2 (no namespace).tdl'
-    $reserved = [ref]0
     $applied = Try-Run {
-      $word.Run('MTCommandsMain.DoConvertEquations', $entireDoc, $fromType, $convertText, $showDialog, $translator, $reserved, $toType) | Out-Null
-    } 'MTCommandsMain.DoConvertEquations(by-ref args)'
+      $word.Run('MTCommandsMain.DoConvertEquations', $true, 3, $false, $false, '', 0, 1) | Out-Null
+    } 'MTCommandsMain.DoConvertEquations(OMML->MathType)'
   }
 
-  # Fallback attempt with no explicit args
+  # Fallback: no args (lets MathType use its own defaults/dialog suppressed)
   if (-not $applied) {
     $applied = Try-Run { $word.Run('MTCommandsMain.DoConvertEquations') | Out-Null } 'MTCommandsMain.DoConvertEquations()'
   }
@@ -114,7 +108,12 @@ try {
     foreach ($tplName in $templateCandidates) {
       foreach ($macro in $macroNames) {
         $qualified = "$tplName!$macro"
-        if (Try-Run { $word.Run($qualified) | Out-Null } "Run macro: $qualified") {
+        # Try with correct OMML→MathType args first, then no args
+        if (Try-Run { $word.Run($qualified, $true, 3, $false, $false, '', 0, 1) | Out-Null } "Run macro (OMML->MT): $qualified") {
+          $applied = $true
+          break
+        }
+        if (Try-Run { $word.Run($qualified) | Out-Null } "Run macro (no args): $qualified") {
           $applied = $true
           break
         }

@@ -6,7 +6,8 @@
       "Bash(pnpm install:*)",
       "Bash(pnpm approve-builds:*)",
       "Bash(node_modules/.pnpm/electron@41.2.0/node_modules/electron/dist/electron.exe dist/main.js)",
-      "Bash(tasklist)"
+      "Bash(tasklist)",
+      "Bash(node_modules/.pnpm/typescript@6.0.2/node_modules/typescript/bin/tsc --noEmit)"
     ]
   }
 }

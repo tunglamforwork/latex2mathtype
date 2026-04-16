@@ -20,8 +20,9 @@ import { zipDocx } from './zip';
 import { applyMathTypeToDocx } from './mathtype';
 import { detectLatexInText, LatexMatch } from './detectLatex';
 import { deduplicateLatex, splitIntoBatches, UniqueLatex } from './dedupe';
-import { replaceLatexInXml, ReplaceStats } from './replace';
+import { replaceLatexInXml, ReplaceStats, ImageCache, ImageCacheEntry } from './replace';
 import { WorkerResult } from './worker';
+import { latexToPng, closeBrowser } from './convert/latexToImage';
 
 export interface ProgressInfo {
   status: 'scanning' | 'converting' | 'replacing' | 'zipping' | 'postprocessing' | 'done' | 'error';
@@ -150,6 +151,83 @@ function collectAllLatex(documentXml: string): LatexMatch[] {
   return all;
 }
 
+// ── Image fallback ─────────────────────────────────────────────────────────────
+
+/** 1 CSS pixel at 96 DPI = 9525 EMU (914400 EMU / 96 px/inch) */
+const PX_TO_EMU = 9525;
+
+/**
+ * Render failed equations as PNG images and patch the DOCX files map.
+ *
+ * For each equation that workers could not convert to OMML:
+ *  1. Render LaTeX → PNG via Puppeteer (if available)
+ *  2. Add PNG to word/media/ in the files map
+ *  3. Add image relationship to word/_rels/document.xml.rels
+ *  4. Record the rId + dimensions in the imageCache
+ *
+ * Returns an ImageCache ready to pass to replaceLatexInXml.
+ * If Puppeteer is unavailable, returns an empty cache (equations stay as text).
+ */
+async function buildImageFallback(
+  failed: UniqueLatex[],
+  files: Map<string, Buffer>,
+): Promise<ImageCache> {
+  const imageCache: ImageCache = new Map();
+  if (failed.length === 0) return imageCache;
+
+  const newRelEntries: string[] = [];
+
+  for (let i = 0; i < failed.length; i++) {
+    const { latex, displayMode } = failed[i];
+
+    const png = await latexToPng(latex, displayMode);
+    if (!png) continue; // no browser or render error — skip this equation
+
+    const filename = `eq_fallback_${i}.png`;
+    const rId = `rIdEq${i + 1}`;
+    const docPrId = 10000 + i;
+
+    // Store PNG in DOCX media folder
+    files.set(`word/media/${filename}`, png.buffer);
+
+    // Collect the new relationship entry
+    newRelEntries.push(
+      `<Relationship Id="${rId}" ` +
+      `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" ` +
+      `Target="media/${filename}"/>`,
+    );
+
+    imageCache.set(latex, {
+      rId,
+      widthEmu: png.width * PX_TO_EMU,
+      heightEmu: png.height * PX_TO_EMU,
+      docPrId,
+    });
+  }
+
+  if (newRelEntries.length === 0) return imageCache;
+
+  // Patch word/_rels/document.xml.rels with new image relationships
+  const RELS_PATH = 'word/_rels/document.xml.rels';
+  const existingRelsBuf = files.get(RELS_PATH);
+
+  let relsXml: string;
+  if (existingRelsBuf) {
+    relsXml = existingRelsBuf.toString('utf-8');
+  } else {
+    // Create a minimal rels file if missing (unusual but defensive)
+    relsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n' +
+      '</Relationships>';
+  }
+
+  const injection = '\n  ' + newRelEntries.join('\n  ');
+  relsXml = relsXml.replace(/<\/Relationships>/, `${injection}\n</Relationships>`);
+  files.set(RELS_PATH, Buffer.from(relsXml, 'utf-8'));
+
+  return imageCache;
+}
+
 // ── XML safety checks ──────────────────────────────────────────────────────────
 
 const INVALID_XML_CHAR_RE = /[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD]/g;
@@ -243,19 +321,29 @@ export async function pipeline(
     onProgress({ status: 'scanning', total, converted: 0, failed: 0 });
 
     // ── Step 3: Convert (parallel workers) ────────────────────────────────
-    const cache = await convertBatch(unique, onProgress);
+    const ommlCache = await convertBatch(unique, onProgress);
 
-    const converted = cache.size;
+    const ommlConverted = ommlCache.size;
+    const failedEquations = unique.filter(u => !ommlCache.has(u.latex));
+
+    // ── Step 3b: Image fallback for equations workers could not convert ────
+    // newFiles is mutable — buildImageFallback adds media files and patches rels
+    const newFiles = new Map(files);
+    const imageCache = await buildImageFallback(failedEquations, newFiles);
+
+    // Close headless browser now that all images are rendered
+    await closeBrowser();
+
+    const converted = ommlConverted + imageCache.size;
     const failed = total - converted;
 
     // ── Step 4: Replace in XML ─────────────────────────────────────────────
     onProgress({ status: 'replacing', total, converted, failed });
-    const { xml: newXml } = replaceLatexInXml(documentXml, cache);
+    const { xml: newXml } = replaceLatexInXml(documentXml, ommlCache, imageCache);
     const safeXml = sanitizeAndValidateDocumentXml(newXml);
 
     // ── Step 5: Zip output ─────────────────────────────────────────────────
     onProgress({ status: 'zipping', total, converted, failed });
-    const newFiles = new Map(files);
     newFiles.set('word/document.xml', Buffer.from(safeXml, 'utf-8'));
     await zipDocx(newFiles, outputPath);
 
